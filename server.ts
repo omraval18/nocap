@@ -3,16 +3,19 @@ import bodyParser from "body-parser";
 import { OpenAI } from "langchain/llms/openai";
 import { calculateMaxTokens } from "langchain/base_language";
 import { ScrapeReviews, scrapeReviewNumber } from ".";
+import cors from "cors";
 
 const app = express();
+app.use(cors());
 app.use(bodyParser.json());
 
-app.get("/ap", (req: Request, res: Response) => {
-    res.send("hello");
+app.get("/api", (req: Request, res: Response) => {
+    console.log(req.body);
+    res.send("<h1>Hello!</h1>");
 });
 
 app.post("/api/reqsummary", async (req: Request, res: Response) => {
-    let url: string = req.body;
+    let { url } = req.body;
     let page = 0;
     let review: string = "";
     let tokenSize = 0;
@@ -21,40 +24,38 @@ app.post("/api/reqsummary", async (req: Request, res: Response) => {
         url += `&page=${page}`;
     }
 
-    let ratings: any = await scrapeReviewNumber(url);
+    let { positiveRatings, negativeRatings, totalRatings }: any = await scrapeReviewNumber(url);
 
-    console.log(ratings);
+    // const prompt = `Evaluate the public reviews of a product from an online shopping site to determine whether it is worth purchasing, and compile a pros and cons list using bullet points. There are ${positiveRatings} positive reviews and ${negativeRatings} negative reviews with total ${totalRatings} rating out of 5 so take this in consideration when evaluating but also consider other aspects equally.
+    //      Consider the following structure for your response:
 
-    const prompt = `Evaluate the public reviews of a product from an online shopping site to determine whether it is worth purchasing, and compile a pros and cons list using bullet points. There are ${ratings.positiveRatings} positive reviews and ${ratings.negativeRatings} negative reviews with total ${ratings.totalRatings} rating out of 5 so take this in consideration when evaluating but also consider other aspects equally.
-         Consider the following structure for your response:
+    // I. Introduction
 
-    I. Introduction
+    // - Briefly explain the purpose of the evaluation and mention the total number of positive and negative reviews, along with the overall rating.
 
-    - Briefly explain the purpose of the evaluation and mention the total number of positive and negative reviews, along with the overall rating.
+    // II. Pros
 
-    II. Pros
+    // - Present the positive aspects of the product based on the reviews.
 
-    - Present the positive aspects of the product based on the reviews.
+    // - Use bullet points to clearly list each pro.
 
-    - Use bullet points to clearly list each pro.
+    // - Provide specific examples or quotes from the reviews to support your points.
 
-    - Provide specific examples or quotes from the reviews to support your points.
+    // III. Cons
 
-    III. Cons
+    // - Highlight the negative aspects of the product as mentioned in the reviews.
 
-    - Highlight the negative aspects of the product as mentioned in the reviews.
+    // - Again, use bullet points to clearly list each con.
 
-    - Again, use bullet points to clearly list each con.
+    // - Include specific examples or quotes from the reviews to back up your statements.
 
-    - Include specific examples or quotes from the reviews to back up your statements.
+    // IV. Conclusion
 
-    IV. Conclusion
+    // - Summarize your findings and provide a final recommendation on whether to purchase the product, considering the overall sentiment of the reviews and the pros and cons you have listed.
 
-    - Summarize your findings and provide a final recommendation on whether to purchase the product, considering the overall sentiment of the reviews and the pros and cons you have listed.
+    // `;
 
-    `;
-
-    for (page = 0; page < 10; page++) {
+    for (page = 0; page < 3; page++) {
         if (page === 1) {
             var negUrl: string = url + `&sortOrder=NEGATIVE_FIRST`;
             var posUrl: string = url + `&sortOrder=POSITIVE_FIRST`;
@@ -76,22 +77,31 @@ app.post("/api/reqsummary", async (req: Request, res: Response) => {
         const maxTokens = await calculateMaxTokens({ prompt: review, modelName: "gpt2" });
         tokenSize = 4096 - maxTokens;
     }
+    res.send({ review });
 
-    const model = new OpenAI({
-        modelName: "gpt-3.5-turbo",
-        temperature: 0.9,
-        openAIApiKey: process.env.OPENAI_API_KEY,
-    });
+    // const model = new OpenAI({
+    //     modelName: "gpt-3.5-turbo",
+    //     temperature: 0.9,
+    //     openAIApiKey: process.env.OPENAI_API,
+    // });
 
-    try {
-        const result = await model.call(`${prompt} : ${review}`);
-        console.log(result);
-        res.send({ tokenSize, result, review });
-    } catch (e) {
-        console.error(e);
-    }
+    // try {
+    //     const result = await model.call(`${prompt} : ${review}`);
+    //     console.log(result);
+    //     res.send({ tokenSize, result, review });
+    // } catch (e) {
+    //     console.error(e);
+    // }
 });
 
-app.listen(3000, () => {
+const server = app.listen(3000, () => {
     console.log("Server Listening");
+});
+
+process.on("SIGINT", () => {
+    console.log("Received SIGINT. Closing server...");
+    server.close(() => {
+        console.log("Server closed.");
+        process.exit(0);
+    });
 });

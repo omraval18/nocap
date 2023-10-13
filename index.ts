@@ -4,6 +4,7 @@ export async function scrapeReviewNumber(productPageLink: string) {
     try {
         const browser = await puppeteer.launch({ headless: "new" });
         const page = await browser.newPage();
+        await page.setDefaultNavigationTimeout(60000);
 
         await page.goto(productPageLink, { waitUntil: "domcontentloaded" });
 
