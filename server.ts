@@ -2,7 +2,12 @@ import express, { Request, Response } from "express";
 import bodyParser from "body-parser";
 import { OpenAI } from "langchain/llms/openai";
 import { calculateMaxTokens } from "langchain/base_language";
-import { ScrapeReviews, scrapeReviewNumber } from ".";
+import {
+    ScrapeFlipkartReviews,
+    ScrapeAmazonReviews,
+    scrapeFlipkartReviewNumber,
+    scrapeAmazonReviewNumber,
+} from ".";
 import cors from "cors";
 
 const app = express();
@@ -11,10 +16,10 @@ app.use(bodyParser.json());
 
 app.get("/api", (req: Request, res: Response) => {
     console.log(req.body);
-    res.send("<h1>Hello!</h1>");
+    res.json({ message: "hello" });
 });
 
-app.post("/api/reqsummary", async (req: Request, res: Response) => {
+app.post("/api/reqflipkartsummary", async (req: Request, res: Response) => {
     let { url } = req.body;
     let page = 0;
     let review: string = "";
@@ -24,38 +29,41 @@ app.post("/api/reqsummary", async (req: Request, res: Response) => {
         url += `&page=${page}`;
     }
 
-    let { positiveRatings, negativeRatings, totalRatings }: any = await scrapeReviewNumber(url);
+    let { positiveRatings, negativeRatings, totalRatings }: any = await scrapeFlipkartReviewNumber(
+        url
+    );
 
-    // const prompt = `Evaluate the public reviews of a product from an online shopping site to determine whether it is worth purchasing, and compile a pros and cons list using bullet points. There are ${positiveRatings} positive reviews and ${negativeRatings} negative reviews with total ${totalRatings} rating out of 5 so take this in consideration when evaluating but also consider other aspects equally.
-    //      Consider the following structure for your response:
+    const prompt = `Evaluate the public reviews of a product from an online shopping site to determine whether it is worth purchasing, and compile a pros and cons list using bullet points. There are ${positiveRatings} positive reviews and ${negativeRatings} negative reviews with total ${totalRatings} rating out of 5 so take this in consideration when evaluating but also consider other aspects equally.
+         Consider the following structure for your response:
 
-    // I. Introduction
+    I. Introduction
 
-    // - Briefly explain the purpose of the evaluation and mention the total number of positive and negative reviews, along with the overall rating.
+    - Briefly explain the 3 highlighted points about this products in bullet points.
 
-    // II. Pros
+    II. Pros
 
-    // - Present the positive aspects of the product based on the reviews.
+    - Present the positive aspects of the product based on the reviews.
 
-    // - Use bullet points to clearly list each pro.
+    - Use bullet points to clearly list each pro.You must provide atleast 5 Pros.
 
-    // - Provide specific examples or quotes from the reviews to support your points.
+    - Best For : List of 3 best things about this product in 3 words only.
 
-    // III. Cons
+    III. Cons
 
-    // - Highlight the negative aspects of the product as mentioned in the reviews.
+    - Highlight the negative aspects of the product as mentioned in the reviews.
 
-    // - Again, use bullet points to clearly list each con.
+    - Again, use bullet points to clearly list each con. You must provide atleast 5 Cons.
 
-    // - Include specific examples or quotes from the reviews to back up your statements.
+    - Issues : List 3 potential issues with this product in 3 words only.
 
-    // IV. Conclusion
+    IV. Conclusion
 
-    // - Summarize your findings and provide a final recommendation on whether to purchase the product, considering the overall sentiment of the reviews and the pros and cons you have listed.
+    - Summarize your findings and provide a final recommendation on whether to purchase the product, considering the overall sentiment of the reviews and the pros and cons you have listed.
 
-    // `;
+    Note: Ensure that the overall evaluation is balanced, taking into account both positive and negative aspects, and present the information in a concise and organized manner. You Must Make every Points in bold and keep It Short to 5 bullets points for each Pros and Cons
+    `;
 
-    for (page = 0; page < 3; page++) {
+    for (page = 0; page < 20; page++) {
         if (page === 1) {
             var negUrl: string = url + `&sortOrder=NEGATIVE_FIRST`;
             var posUrl: string = url + `&sortOrder=POSITIVE_FIRST`;
@@ -64,7 +72,7 @@ app.post("/api/reqsummary", async (req: Request, res: Response) => {
             var posUrl: string = url + `&sortOrder=POSITIVE_FIRST&page=${page}`;
         }
 
-        const res = await ScrapeReviews(posUrl);
+        const res = await ScrapeFlipkartReviews(posUrl);
         res?.shift();
         res?.shift();
         review += res
@@ -74,24 +82,74 @@ app.post("/api/reqsummary", async (req: Request, res: Response) => {
                 /([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g,
                 ""
             );
-        const maxTokens = await calculateMaxTokens({ prompt: review, modelName: "gpt2" });
+        const maxTokens = await calculateMaxTokens({ prompt: review + prompt, modelName: "gpt2" });
         tokenSize = 4096 - maxTokens;
     }
-    res.send({ review });
+    console.log(tokenSize);
 
-    // const model = new OpenAI({
-    //     modelName: "gpt-3.5-turbo",
-    //     temperature: 0.9,
-    //     openAIApiKey: process.env.OPENAI_API,
-    // });
+    res.send({ prompt: `${prompt}:${review}` });
+});
+app.post("/api/reqamazonsummary", async (req: Request, res: Response) => {
+    let { url } = req.body;
+    let page: number = 0;
+    let review: string = "";
+    let tokenSize = 0;
 
-    // try {
-    //     const result = await model.call(`${prompt} : ${review}`);
-    //     console.log(result);
-    //     res.send({ tokenSize, result, review });
-    // } catch (e) {
-    //     console.error(e);
-    // }
+    let ratings: any = await scrapeAmazonReviewNumber(url);
+
+    const prompt = `Evaluate the public reviews of a product from an online shopping site to determine whether it is worth purchasing, and compile a pros and cons list using bullet points. There are ${ratings.positive}% positive reviews and ${ratings.negative}% negative reviews (1 star) with total ${ratings.ratings} rating out of 5 so take this in consideration when evaluating but also consider other aspects equally.
+         Consider the following structure for your response:
+
+    I. Introduction
+
+    - Briefly explain the 3 highlighted points about this products in bullet points.
+
+    II. Pros
+
+    - Present the positive aspects of the product based on the reviews.
+
+    - Use bullet points to clearly list each pro.You must provide atleast 5 Pros.
+
+    - Best For : List of 3 best things about this product in 3 words only.
+
+    III. Cons
+
+    - Highlight the negative aspects of the product as mentioned in the reviews.
+
+    - Again, use bullet points to clearly list each con. You must provide atleast 5 Cons.
+
+    - Issues : List 3 potential issues with this product in 3 words only.
+
+    IV. Conclusion
+
+    - Summarize your findings and provide a final recommendation on whether to purchase the product, considering the overall sentiment of the reviews and the pros and cons you have listed.
+
+    Note: Ensure that the overall evaluation is balanced, taking into account both positive and negative aspects, and present the information in a concise and organized manner. You Must Make every Points in bold and keep It Short to 5 bullets points for each Pros and Cons
+    `;
+
+    for (page = 0; review.length / 3 < 4096; page++) {
+        if (page > 1) {
+            url = url + `&pageNumber=${page}`;
+        }
+
+        const res = await ScrapeAmazonReviews(url);
+        res?.shift();
+        res?.shift();
+        review += res
+            ?.join(" ")
+            .replace(/is|the|was|were|\d+|\p{Emoji}/g, "")
+            .replace(
+                /([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g,
+                ""
+            );
+        const maxTokens = await calculateMaxTokens({ prompt: review + prompt, modelName: "gpt2" });
+        tokenSize = 4096 - maxTokens;
+    }
+    console.log(tokenSize);
+    console.log(review.length);
+    console.log(ratings);
+
+    res.send({ prompt: `${prompt}:${review}` });
 });
 
 const server = app.listen(3000, () => {
